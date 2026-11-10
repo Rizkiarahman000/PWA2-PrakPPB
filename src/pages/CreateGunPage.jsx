@@ -41,9 +41,13 @@ export default function CreateGunPage({ onBack, onSuccess }) {
     is_featured: false,
   })
 
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
-  const [uploadedImageUrl, setUploadedImageUrl] = useState('')
+  // Multi-image support (6.6.7): `images` holds every image the user added,
+  // each entry shaped { url, pending, file? }. A pending entry still needs to be
+  // uploaded; preset/data-URL entries are already final.
+  const [images, setImages] = useState([])
+  const uploadedImageUrl =
+    (images.find((img) => !img.pending)?.url) || images[0]?.url || ''
+  const imagePreview = images[0]?.url || null
 
   // Specifications (ingredients in API)
   const [specs, setSpecs] = useState([
@@ -73,6 +77,8 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       specs,
       steps,
       uploadedImageUrl,
+      imagePreview,
+      images: images.map((img) => img.url),
     }
     const saved = saveDraft(draftData, 'create')
     if (saved) {
@@ -83,7 +89,7 @@ export default function CreateGunPage({ onBack, onSuccess }) {
         setTimeout(() => setSuccessMsg(''), 3000)
       }
     }
-  }, [formData, specs, steps, uploadedImageUrl])
+  }, [formData, specs, steps, uploadedImageUrl, imagePreview, images])
 
   // Auto-save draft every 30 seconds while in form step
   useEffect(() => {
@@ -102,9 +108,14 @@ export default function CreateGunPage({ onBack, onSuccess }) {
       if (draft.formData) setFormData(draft.formData)
       if (draft.specs) setSpecs(draft.specs)
       if (draft.steps) setSteps(draft.steps)
-      if (draft.uploadedImageUrl) {
-        setUploadedImageUrl(draft.uploadedImageUrl)
-        setImagePreview(draft.uploadedImageUrl)
+      const savedImages =
+        Array.isArray(draft.images) && draft.images.length > 0
+          ? draft.images
+          : draft.uploadedImageUrl
+          ? [draft.uploadedImageUrl]
+          : []
+      if (savedImages.length > 0) {
+        setImages(savedImages.map((url) => ({ url, pending: false })))
         setCurrentStep('form')
       }
       setShowDraftModal(false)
@@ -119,62 +130,88 @@ export default function CreateGunPage({ onBack, onSuccess }) {
     setDraftTimestamp(null)
   }
 
-  // Handle file selection
+  // Handle file selection (multiple files supported for 6.6.7)
   const handleImageChange = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError('File size exceeds 5MB limit.')
-      return
-    }
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
 
     const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
-    if (!allowed.includes(file.type)) {
-      setError('Allowed formats: .jpg, .jpeg, .png, .webp')
-      return
-    }
+    const newImages = []
+    let rejected = false
 
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
-    setError('')
+    files.forEach((file) => {
+      if (file.size > 5 * 1024 * 1024) {
+        rejected = true
+        return
+      }
+      if (!allowed.includes(file.type)) {
+        rejected = true
+        return
+      }
+      newImages.push({ url: URL.createObjectURL(file), pending: true, file })
+    })
+
+    if (newImages.length > 0) {
+      setImages((prev) => [...prev, ...newImages])
+    }
+    if (rejected) {
+      setError('Some files were skipped (max 5MB, .jpg/.jpeg/.png/.webp only).')
+    } else {
+      setError('')
+    }
+    // Reset input value so re-selecting the same file re-triggers onChange
+    e.target.value = ''
   }
 
   // Quick fallback select vector from local assets
   const handleSelectPreset = (url) => {
-    setImageFile(null)
-    setImagePreview(url)
-    setUploadedImageUrl(url)
+    if (!images.some((img) => img.url === url)) {
+      setImages((prev) => [...prev, { url, pending: false }])
+    }
     setCurrentStep('form')
     setError('')
   }
 
-  // Upload image to server
-  const handleUploadImage = async () => {
-    if (!imageFile) {
-      // If user already previewed a preset or entered a url, advance to form
-      if (uploadedImageUrl) {
-        setCurrentStep('form')
-        return
+  // Remove an image from the queue
+  const handleRemoveImage = (index) => {
+    setImages((prev) => {
+      const target = prev[index]
+      if (target?.pending && target.url?.startsWith('blob:')) {
+        URL.revokeObjectURL(target.url)
       }
-      setError('Please select an image file first.')
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  // Upload all pending images to storage (falls back to data URLs), then advance
+  const handleUploadImages = async () => {
+    if (images.length === 0) {
+      setError('Please select at least one image first.')
       return
     }
 
     try {
       setUploading(true)
       setError('')
-      const result = await uploadService.uploadImage(imageFile)
-      if (result.success && result.data?.url) {
-        setUploadedImageUrl(result.data.url)
-        setCurrentStep('form')
-      } else {
-        throw new Error(result.message || 'Image upload failed.')
+
+      const finalized = []
+      for (const img of images) {
+        if (img.pending && img.file) {
+          try {
+            const result = await uploadService.uploadImage(img.file)
+            const url = result?.success && result?.data?.url ? result.data.url : img.url
+            finalized.push({ url, pending: false })
+            if (img.url?.startsWith('blob:')) URL.revokeObjectURL(img.url)
+          } catch (err) {
+            console.warn('Upload failed, keeping local preview:', err)
+            finalized.push({ url: img.url, pending: false })
+          }
+        } else {
+          finalized.push({ url: img.url, pending: false })
+        }
       }
-    } catch (err) {
-      console.warn('Upload API failed, falling back to local preview:', err)
-      // Allow fallback to image preview so the user can continue even if MinIO bucket is unreachable
-      setUploadedImageUrl(imagePreview || '/guns/pistol.svg')
+
+      setImages(finalized)
       setCurrentStep('form')
     } finally {
       setUploading(false)
@@ -257,11 +294,13 @@ export default function CreateGunPage({ onBack, onSuccess }) {
     }
 
     // Prepare payload compliant with backend /api/v1/recipes schema
+    const imageUrls = images.map((img) => img.url).filter(Boolean)
     const payload = {
       name: formData.name.trim(),
       category: formData.category || 'makanan',
       description: formData.description.trim() || `${formData.type} caliber ${formData.caliber}.`,
-      image_url: uploadedImageUrl || '/guns/pistol.svg',
+      image_url: imageUrls[0] || '/guns/pistol.svg',
+      images: imageUrls,
       prep_time: 15,
       cook_time: Number(formData.price) || 500, // Price stored in cook_time
       servings: Number(formData.servings) || 1,
@@ -343,102 +382,106 @@ export default function CreateGunPage({ onBack, onSuccess }) {
         </div>
       </div>
 
-      {/* STEP 1: Upload Image */}
+      {/* STEP 1: Upload Image(s) */}
       {currentStep === 'upload' && (
         <div className="card-box">
           <h2 className="card-box-title">Weapon Imagery</h2>
           <p className="card-box-desc">
-            Upload an authentic photograph or blueprint (max 5MB), or select an armory preset.
+            Upload one or more photographs / blueprints (max 5MB each), or add an armory
+            preset. Each catalog can carry multiple images.
           </p>
 
-          {!imagePreview ? (
-            <div className="upload-dropzone">
-              <input
-                id="gun-image-input"
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp"
-                onChange={handleImageChange}
-                className="hidden-file-input"
-              />
-              <label htmlFor="gun-image-input" className="upload-label">
-                <Upload size={36} className="upload-icon" />
-                <span className="upload-main-text">Click to choose an image file</span>
-                <span className="upload-sub-text">JPG, PNG, or WebP up to 5MB</span>
-              </label>
+          <div className="upload-dropzone">
+            <input
+              id="gun-image-input"
+              type="file"
+              multiple
+              accept="image/jpeg,image/jpg,image/png,image/webp"
+              onChange={handleImageChange}
+              className="hidden-file-input"
+            />
+            <label htmlFor="gun-image-input" className="upload-label">
+              <Upload size={36} className="upload-icon" />
+              <span className="upload-main-text">Click to choose image files</span>
+              <span className="upload-sub-text">JPG, PNG, or WebP up to 5MB each — multiple allowed</span>
+            </label>
 
-              <div className="preset-selector">
-                <span className="preset-title">Or use a stock preset:</span>
-                <div className="preset-pills">
-                  <button
-                    type="button"
-                    className="pill"
-                    onClick={() => handleSelectPreset('/guns/pistol.svg')}
-                  >
-                    Pistol Vector
-                  </button>
-                  <button
-                    type="button"
-                    className="pill"
-                    onClick={() => handleSelectPreset('/guns/rifle.svg')}
-                  >
-                    Rifle Vector
-                  </button>
-                  <button
-                    type="button"
-                    className="pill"
-                    onClick={() => handleSelectPreset('/guns/shotgun.svg')}
-                  >
-                    Shotgun Vector
-                  </button>
-                </div>
+            <div className="preset-selector">
+              <span className="preset-title">Or add a stock preset:</span>
+              <div className="preset-pills">
+                <button
+                  type="button"
+                  className="pill"
+                  onClick={() => handleSelectPreset('/guns/pistol.svg')}
+                >
+                  Pistol Vector
+                </button>
+                <button
+                  type="button"
+                  className="pill"
+                  onClick={() => handleSelectPreset('/guns/rifle.svg')}
+                >
+                  Rifle Vector
+                </button>
+                <button
+                  type="button"
+                  className="pill"
+                  onClick={() => handleSelectPreset('/guns/shotgun.svg')}
+                >
+                  Shotgun Vector
+                </button>
               </div>
             </div>
-          ) : (
-            <div className="preview-container">
-              <div className="preview-image-wrap">
-                <img src={imagePreview} alt="Hardware preview" className="preview-img" />
-                <button
-                  type="button"
-                  className="preview-remove-btn"
-                  onClick={() => {
-                    setImageFile(null)
-                    setImagePreview(null)
-                    setUploadedImageUrl('')
-                  }}
-                  title="Remove image"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+          </div>
 
-              <div className="preview-actions">
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  onClick={handleUploadImage}
-                  disabled={uploading}
-                >
-                  {uploading ? (
-                    <>
-                      <Loader size={18} className="spin" /> Uploading to MinIO…
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={18} /> Confirm Imagery &amp; Continue
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--outline"
-                  onClick={() => {
-                    setUploadedImageUrl(imagePreview)
-                    setCurrentStep('form')
-                  }}
-                >
-                  Continue without uploading
-                </button>
-              </div>
+          {/* Selected images grid */}
+          {images.length > 0 && (
+            <div className="image-select-grid">
+              {images.map((img, i) => (
+                <div key={`${img.url}-${i}`} className="image-select-item">
+                  <img src={img.url} alt={`Selected ${i + 1}`} loading="lazy" />
+                  {i === 0 && <span className="image-select-primary">Primary</span>}
+                  <button
+                    type="button"
+                    className="preview-remove-btn"
+                    onClick={() => handleRemoveImage(i)}
+                    title="Remove image"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+              <label htmlFor="gun-image-input" className="image-select-add">
+                <Plus size={24} /> Add more
+              </label>
+            </div>
+          )}
+
+          {images.length > 0 && (
+            <div className="preview-actions" style={{ marginTop: '16px' }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={handleUploadImages}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <>
+                    <Loader size={18} className="spin" /> Uploading…
+                  </>
+                ) : (
+                  <>
+                    <Upload size={18} /> Confirm Imagery &amp; Continue
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn btn--outline"
+                onClick={() => setCurrentStep('form')}
+              >
+                Continue without uploading
+              </button>
             </div>
           )}
         </div>
@@ -449,17 +492,19 @@ export default function CreateGunPage({ onBack, onSuccess }) {
         <form onSubmit={handleSubmit} className="entry-form">
           {/* Active Image Thumbnail */}
           <div className="selected-thumb-bar">
-            <img src={uploadedImageUrl || imagePreview} alt="Selected" className="thumb-small" />
+            <img src={uploadedImageUrl || imagePreview || '/guns/pistol.svg'} alt="Selected" className="thumb-small" />
             <div className="thumb-info">
               <span className="thumb-title">Imagery Assigned</span>
-              <span className="thumb-sub">Ready for registration</span>
+              <span className="thumb-sub">
+                {images.length > 0 ? `${images.length} image${images.length > 1 ? 's' : ''} ready for registration` : 'Ready for registration'}
+              </span>
             </div>
             <button
               type="button"
               className="btn btn--outline btn--sm"
               onClick={() => setCurrentStep('upload')}
             >
-              Change Image
+              {images.length > 0 ? 'Manage Images' : 'Add Image'}
             </button>
           </div>
 

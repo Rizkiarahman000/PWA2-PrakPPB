@@ -20,8 +20,6 @@ const FavoritesPage = lazy(() => import('./pages/FavoritesPage.jsx'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage.jsx'))
 const CreateGunPage = lazy(() => import('./pages/CreateGunPage.jsx'))
 const EditGunPage = lazy(() => import('./pages/EditGunPage.jsx'))
-const About = lazy(() => import('./pages/About.jsx'))
-const Contact = lazy(() => import('./pages/Contact.jsx'))
 
 function PageFallback() {
   return (
@@ -155,10 +153,11 @@ function App() {
                 />
               )}
               {tab === 'Profile' && (
-                <ProfilePage onReplaySplash={() => setShowSplash(true)} />
+                <ProfilePage
+                  onReplaySplash={() => setShowSplash(true)}
+                  onNavigate={(destination, payload) => handleNavigate(destination, payload)}
+                />
               )}
-              {tab === 'About' && <About />}
-              {tab === 'Contact' && <Contact />}
             </>
           )}
         </Suspense>

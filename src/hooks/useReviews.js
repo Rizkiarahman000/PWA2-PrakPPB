@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import reviewService from '../services/reviewService'
 import { cacheGet, cacheSet, buildKey } from '../utils/queryCache'
+import { getUserIdentifier } from '../services/userService'
 
 // ---------------------------------------------------------------------------
 // useReviews — fetch reviews for a specific product, with query caching.
@@ -11,7 +12,8 @@ export function useReviews(gunId) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  const cacheKey = buildKey('reviews', { gunId })
+  const userIdentifier = getUserIdentifier()
+  const cacheKey = buildKey('reviews', { gunId, userIdentifier })
 
   const fetchReviews = useCallback(async ({ force = false } = {}) => {
     if (!gunId) {
@@ -31,7 +33,7 @@ export function useReviews(gunId) {
       setLoading(true)
       setError(null)
 
-      const response = await reviewService.getReviews(gunId)
+      const response = await reviewService.getReviews(gunId, userIdentifier)
 
       if (response.success) {
         const data = response.data || []
@@ -46,7 +48,7 @@ export function useReviews(gunId) {
     } finally {
       setLoading(false)
     }
-  }, [gunId, cacheKey])
+  }, [gunId, cacheKey, userIdentifier])
 
   useEffect(() => {
     fetchReviews()

@@ -1285,7 +1285,7 @@
 
 .profile-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   border-top: 1px solid var(--line);
   padding-top: 18px;
@@ -1295,6 +1295,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.stat-icon {
+  margin-bottom: 4px;
 }
 
 .stat-val {
@@ -1325,6 +1329,9 @@
   margin: 0;
   font-size: 1.15rem;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .profile-danger-zone {
@@ -1536,4 +1543,247 @@
   font-size: 0.92rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * Profile — Sections Drafts / Archive / About / Contact (6.6.4 / 6.6.5)
+ * --------------------------------------------------------------------------- */
+.profile-edit-btn {
+  margin-left: auto;
+}
+
+.profile-section {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profile-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-list-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px;
+  background: var(--paper);
+}
+
+.profile-list-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.profile-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-list-meta {
+  color: var(--steel);
+  font-size: 0.82rem;
+}
+
+.profile-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Product Detail — Image Gallery (6.6.7)
+ * --------------------------------------------------------------------------- */
+.detail-media {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.detail-thumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 12px 12px;
+}
+
+.detail-thumb {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.detail-thumb img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 3px;
+  display: block;
+}
+
+.detail-thumb--active {
+  border-color: var(--brass);
+}
+
+.detail-loading,
+.detail-empty {
+  color: var(--steel);
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Reviews — actions / edit / own-tag (6.6.6)
+ * --------------------------------------------------------------------------- */
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.review-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--steel);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.review-action-btn:hover {
+  color: var(--ink);
+  border-color: var(--steel);
+}
+
+.review-action-btn--active {
+  color: #1e8449;
+  border-color: var(--brass);
+  background: #eef7f1;
+}
+
+.review-action-btn--danger:hover {
+  color: #c0392b;
+  border-color: #c0392b;
+}
+
+.review-own-tag {
+  color: var(--steel);
+  font-weight: 500;
+  font-size: 0.78rem;
+  margin-left: 6px;
+}
+
+.review-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.review-edit-stars {
+  display: flex;
+  gap: 4px;
+}
+
+.review-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Multi-image selector (Create / Edit) (6.6.7)
+ * --------------------------------------------------------------------------- */
+.image-select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.image-select-item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.image-select-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.image-select-primary {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: var(--brass);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.image-select-item .preview-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+}
+
+.image-select-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  aspect-ratio: 1 / 1;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  color: var(--steel);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.image-select-add:hover {
+  border-color: var(--brass);
+  color: var(--ink);
 }

@@ -128,6 +128,7 @@ export default function Catalog({ onNavigate }) {
         onBack={() => setSelectedGun(null)}
         onEdit={(g) => onNavigate && onNavigate('Edit', g)}
         onDelete={(g) => { setSelectedGun(null); setDeleteTarget(g) }}
+        onArchive={() => { setSelectedGun(null); refetch() }}
       />
     )
   }

@@ -50,6 +50,11 @@ export const normalizeProduct = (item) => {
     description: item.description || '',
     image_url: item.image_url || item.image || '/guns/pistol.svg',
     image: item.image_url || item.image || '/guns/pistol.svg',
+    images:
+      Array.isArray(item.images) && item.images.length > 0
+        ? item.images
+        : [item.image_url || item.image || '/guns/pistol.svg'],
+    archived_at: item.archived_at || null,
     ingredients: specsList,
     steps: stepsList,
   }
@@ -81,6 +86,14 @@ class GunService {
 
       if (params.category && params.category !== 'All') {
         queryParts.push(`type=eq.${encodeURIComponent(params.category)}`)
+      }
+
+      // Soft delete: the catalog only lists active products. Archived items
+      // are requested separately (params.archived === true).
+      if (params.archived) {
+        queryParts.push('archived_at=not.is.null')
+      } else {
+        queryParts.push('archived_at=is.null')
       }
 
       if (params.sort_by) {
@@ -162,7 +175,12 @@ class GunService {
         price: Number(data.price ?? data.cook_time ?? 0),
         description: data.description || '',
         specs: specsArray,
-        image_url: data.image_url || null,
+        image_url: data.image_url || (Array.isArray(data.images) ? data.images[0] : null) || null,
+        images: Array.isArray(data.images)
+          ? data.images
+          : data.image_url
+          ? [data.image_url]
+          : [],
       }
 
       const res = await apiClient.post('/rest/v1/products', payload, {
@@ -198,6 +216,11 @@ class GunService {
       if (data.description !== undefined) payload.description = data.description
       if (specsArray !== undefined) payload.specs = specsArray
       if (data.image_url !== undefined) payload.image_url = data.image_url
+      if (data.images !== undefined) {
+        const imgs = Array.isArray(data.images) ? data.images : []
+        payload.images = imgs
+        if (imgs.length > 0) payload.image_url = imgs[0]
+      }
 
       const res = await apiClient.patch(`/rest/v1/products?id=eq.${id}`, payload, {
         headers: { Prefer: 'return=representation' },
@@ -226,9 +249,47 @@ class GunService {
     if (IS_SUPABASE) {
       await apiClient.delete(`/rest/v1/products?id=eq.${id}`)
       invalidateScope('guns')
+      invalidateScope('archived')
       return { success: true }
     }
     return apiClient.delete(`/api/v1/recipes/${id}`)
+  }
+
+  /**
+   * Soft delete — mark a product as archived (hidden from the catalog).
+   */
+  async archiveGun(id) {
+    if (IS_SUPABASE) {
+      await apiClient.patch(`/rest/v1/products?id=eq.${id}`, {
+        archived_at: new Date().toISOString(),
+      })
+      invalidateScope('guns')
+      invalidateScope('archived')
+      return { success: true }
+    }
+    return apiClient.patch(`/api/v1/recipes/${id}`, { archived: true })
+  }
+
+  /**
+   * Restore an archived product back into the catalog.
+   */
+  async restoreGun(id) {
+    if (IS_SUPABASE) {
+      await apiClient.patch(`/rest/v1/products?id=eq.${id}`, {
+        archived_at: null,
+      })
+      invalidateScope('guns')
+      invalidateScope('archived')
+      return { success: true }
+    }
+    return apiClient.patch(`/api/v1/recipes/${id}`, { archived: false })
+  }
+
+  /**
+   * Fetch all archived (soft-deleted) products.
+   */
+  async getArchived() {
+    return this.getGuns({ archived: true, limit: 100, sort_by: 'archived_at', order: 'desc' })
   }
 }
 
