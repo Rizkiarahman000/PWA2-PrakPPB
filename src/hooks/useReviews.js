@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import reviewService from '../services/reviewService'
+import { cacheGet, cacheSet, buildKey } from '../utils/queryCache'
 
 // ---------------------------------------------------------------------------
-// useReviews — fetch reviews for a specific product.
+// useReviews — fetch reviews for a specific product, with query caching.
 // ---------------------------------------------------------------------------
 
 export function useReviews(gunId) {
@@ -10,11 +11,22 @@ export function useReviews(gunId) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  const fetchReviews = useCallback(async () => {
+  const cacheKey = buildKey('reviews', { gunId })
+
+  const fetchReviews = useCallback(async ({ force = false } = {}) => {
     if (!gunId) {
       setLoading(false)
       return
     }
+
+    const cached = force ? undefined : cacheGet(cacheKey)
+    if (cached) {
+      setReviews(cached || [])
+      setError(null)
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
       setError(null)
@@ -22,7 +34,9 @@ export function useReviews(gunId) {
       const response = await reviewService.getReviews(gunId)
 
       if (response.success) {
-        setReviews(response.data || [])
+        const data = response.data || []
+        setReviews(data)
+        cacheSet(cacheKey, data)
       } else {
         setError(response.message || 'Failed to fetch reviews.')
       }
@@ -32,13 +46,15 @@ export function useReviews(gunId) {
     } finally {
       setLoading(false)
     }
-  }, [gunId])
+  }, [gunId, cacheKey])
 
   useEffect(() => {
     fetchReviews()
   }, [fetchReviews])
 
-  return { reviews, loading, error, refetch: fetchReviews }
+  const refetch = useCallback(() => fetchReviews({ force: true }), [fetchReviews])
+
+  return { reviews, loading, error, refetch }
 }
 
 // ---------------------------------------------------------------------------

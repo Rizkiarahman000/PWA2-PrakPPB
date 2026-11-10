@@ -1518,3 +1518,22 @@
     transform: translateY(0);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Catalog Pagination
+ * --------------------------------------------------------------------------- */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 28px 0 8px;
+  flex-wrap: wrap;
+}
+
+.pagination__info {
+  color: var(--steel);
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -1,4 +1,5 @@
-import { apiClient, IS_SUPABASE } from '../config/api'
+import { apiClient, apiClientRaw, IS_SUPABASE } from '../config/api'
+import { invalidateScope } from '../utils/queryCache'
 
 // ---------------------------------------------------------------------------
 // Normalizer — standardizes product shape whether received from Supabase
@@ -65,6 +66,13 @@ class GunService {
    */
   async getGuns(params = {}) {
     if (IS_SUPABASE) {
+      // Server-side pagination: limit / offset translated into a Range
+      // request, combined with `Prefer: count=exact` so PostgREST returns the
+      // total number of matching rows in the Content-Range header.
+      const limit = Number(params.limit) || 10
+      const page = Number(params.page) || 1
+      const offset = (page - 1) * limit
+
       const queryParts = ['select=*']
 
       if (params.search) {
@@ -79,24 +87,38 @@ class GunService {
         const order = params.order === 'desc' ? 'desc' : 'asc'
         queryParts.push(`order=${encodeURIComponent(params.sort_by)}.${order}`)
       } else {
-        queryParts.push('order=created_at.desc')
-      }
-
-      if (params.limit) {
-        queryParts.push(`limit=${params.limit}`)
+        queryParts.push('order=created_at.desc,id.desc')
       }
 
       const queryString = queryParts.join('&')
-      const data = await apiClient.get(`/rest/v1/products?${queryString}`)
-      const list = Array.isArray(data) ? data.map(normalizeProduct) : []
+
+      const response = await apiClientRaw.get(`/rest/v1/products?${queryString}`, {
+        headers: {
+          Prefer: 'count=exact',
+          Range: `${offset}-${offset + limit - 1}`,
+        },
+      })
+
+      const payload = response.data
+      const list = (Array.isArray(payload) ? payload : []).map(normalizeProduct)
+
+      let total = list.length
+      const contentRange = response.headers && response.headers['content-range']
+      if (contentRange) {
+        const totalPart = contentRange.split('/')[1]
+        if (totalPart && totalPart !== '*') {
+          total = parseInt(totalPart, 10) || total
+        }
+      }
 
       return {
         success: true,
         data: list,
         pagination: {
-          total: list.length,
-          page: params.page || 1,
-          limit: params.limit || 50,
+          total,
+          page,
+          limit,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
         },
       }
     }
@@ -147,6 +169,7 @@ class GunService {
         headers: { Prefer: 'return=representation' },
       })
       const created = Array.isArray(res) ? res[0] : res
+      invalidateScope('guns')
       return { success: true, data: normalizeProduct(created) }
     }
     return apiClient.post('/api/v1/recipes', data)
@@ -180,6 +203,7 @@ class GunService {
         headers: { Prefer: 'return=representation' },
       })
       const updated = Array.isArray(res) ? res[0] : res
+      invalidateScope('guns')
       return { success: true, data: normalizeProduct(updated) }
     }
     return apiClient.put(`/api/v1/recipes/${id}`, data)
@@ -201,6 +225,7 @@ class GunService {
   async deleteGun(id) {
     if (IS_SUPABASE) {
       await apiClient.delete(`/rest/v1/products?id=eq.${id}`)
+      invalidateScope('guns')
       return { success: true }
     }
     return apiClient.delete(`/api/v1/recipes/${id}`)

@@ -1,19 +1,36 @@
-import { useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Loader } from 'lucide-react'
 import Header from './components/Header.jsx'
 import Footer from './components/Footer.jsx'
-import Catalog from './pages/Catalog.jsx'
-import FavoritesPage from './pages/FavoritesPage.jsx'
-import ProfilePage from './pages/ProfilePage.jsx'
-import CreateGunPage from './pages/CreateGunPage.jsx'
-import EditGunPage from './pages/EditGunPage.jsx'
 import GunDetail from './components/gun/GunDetail.jsx'
-import About from './pages/About.jsx'
-import Contact from './pages/Contact.jsx'
 import PWABadge from './components/PWABadge.jsx'
 import ConfirmModal from './components/modals/ConfirmModal.jsx'
 import SplashScreen from './components/common/SplashScreen.jsx'
 import gunService from './services/gunService.js'
+import { SHARE_PARAM } from './utils/share.js'
 import './App.css'
+
+// ---------------------------------------------------------------------------
+// Code-splitting: page-level components are lazy-loaded so the initial bundle
+// only ships what the user actually opens. Each lazy import splits into its
+// own chunk that Vite fetches on first render, wrapped below in <Suspense>.
+// ---------------------------------------------------------------------------
+const Catalog = lazy(() => import('./pages/Catalog.jsx'))
+const FavoritesPage = lazy(() => import('./pages/FavoritesPage.jsx'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage.jsx'))
+const CreateGunPage = lazy(() => import('./pages/CreateGunPage.jsx'))
+const EditGunPage = lazy(() => import('./pages/EditGunPage.jsx'))
+const About = lazy(() => import('./pages/About.jsx'))
+const Contact = lazy(() => import('./pages/Contact.jsx'))
+
+function PageFallback() {
+  return (
+    <div className="state-box">
+      <Loader size={28} className="spin" />
+      <p>Loading…</p>
+    </div>
+  )
+}
 
 function App() {
   const [showSplash, setShowSplash] = useState(true)
@@ -23,6 +40,30 @@ function App() {
   const [editingGun, setEditingGun] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Resolve a shared deep link (?gun=<id>) on first load: turn it into the
+  // corresponding product detail view so a shared link lands on that item.
+  useEffect(() => {
+    const gunId = new URLSearchParams(window.location.search).get(SHARE_PARAM)
+    if (!gunId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await gunService.getGunById(gunId)
+        if (!cancelled && res && res.success && res.data) {
+          setSelectedGun(res.data)
+          setMode('detail')
+          setTab('Catalog')
+          setShowSplash(false)
+        }
+      } catch {
+        // Invalid / missing product — leave the default catalog view.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Unified navigation handler
   const handleNavigate = (target, payload) => {
@@ -66,59 +107,61 @@ function App() {
       />
 
       <main className="main">
-        {/* Sub-page views */}
-        {mode === 'create' && (
-          <CreateGunPage
-            onBack={handleBackToList}
-            onSuccess={() => {
-              handleBackToList()
-              setTab('Catalog')
-            }}
-          />
-        )}
+        <Suspense fallback={<PageFallback />}>
+          {/* Sub-page views */}
+          {mode === 'create' && (
+            <CreateGunPage
+              onBack={handleBackToList}
+              onSuccess={() => {
+                handleBackToList()
+                setTab('Catalog')
+              }}
+            />
+          )}
 
-        {mode === 'edit' && (
-          <EditGunPage
-            gun={editingGun}
-            gunId={editingGun?.id}
-            onBack={handleBackToList}
-            onSuccess={() => {
-              handleBackToList()
-              setTab('Catalog')
-            }}
-          />
-        )}
+          {mode === 'edit' && (
+            <EditGunPage
+              gun={editingGun}
+              gunId={editingGun?.id}
+              onBack={handleBackToList}
+              onSuccess={() => {
+                handleBackToList()
+                setTab('Catalog')
+              }}
+            />
+          )}
 
-        {mode === 'detail' && selectedGun && (
-          <GunDetail
-            gun={selectedGun}
-            onBack={handleBackToList}
-            onEdit={(g) => handleNavigate('Edit', g)}
-            onDelete={(g) => setDeleteTarget(g)}
-          />
-        )}
+          {mode === 'detail' && selectedGun && (
+            <GunDetail
+              gun={selectedGun}
+              onBack={handleBackToList}
+              onEdit={(g) => handleNavigate('Edit', g)}
+              onDelete={(g) => setDeleteTarget(g)}
+            />
+          )}
 
-        {/* Top-level Tabs */}
-        {mode === 'list' && (
-          <>
-            {tab === 'Catalog' && (
-              <Catalog
-                onNavigate={(destination, payload) => handleNavigate(destination, payload)}
-              />
-            )}
-            {tab === 'Favorites' && (
-              <FavoritesPage
-                onSelectGun={(g) => handleNavigate('Detail', g)}
-                onNavigateCatalog={() => setTab('Catalog')}
-              />
-            )}
-            {tab === 'Profile' && (
-              <ProfilePage onReplaySplash={() => setShowSplash(true)} />
-            )}
-            {tab === 'About' && <About />}
-            {tab === 'Contact' && <Contact />}
-          </>
-        )}
+          {/* Top-level Tabs */}
+          {mode === 'list' && (
+            <>
+              {tab === 'Catalog' && (
+                <Catalog
+                  onNavigate={(destination, payload) => handleNavigate(destination, payload)}
+                />
+              )}
+              {tab === 'Favorites' && (
+                <FavoritesPage
+                  onSelectGun={(g) => handleNavigate('Detail', g)}
+                  onNavigateCatalog={() => setTab('Catalog')}
+                />
+              )}
+              {tab === 'Profile' && (
+                <ProfilePage onReplaySplash={() => setShowSplash(true)} />
+              )}
+              {tab === 'About' && <About />}
+              {tab === 'Contact' && <Contact />}
+            </>
+          )}
+        </Suspense>
       </main>
 
       {/* Global Delete Confirmation */}

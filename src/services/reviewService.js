@@ -1,4 +1,5 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
+import { invalidateScope } from '../utils/queryCache'
 
 // ---------------------------------------------------------------------------
 // ReviewService — product reviews & ratings.
@@ -49,6 +50,7 @@ class ReviewService {
         headers: { Prefer: 'return=representation' },
       })
       const created = Array.isArray(res) ? res[0] : res
+      invalidateScope('reviews')
       return { success: true, data: created }
     }
 
@@ -68,6 +70,7 @@ class ReviewService {
         },
         { headers: { Prefer: 'return=representation' } },
       )
+      invalidateScope('reviews')
       return { success: true, data: Array.isArray(res) ? res[0] : res }
     }
 
@@ -80,6 +83,7 @@ class ReviewService {
   async deleteReview(reviewId) {
     if (IS_SUPABASE) {
       await apiClient.delete(`/rest/v1/reviews?id=eq.${reviewId}`)
+      invalidateScope('reviews')
       return { success: true }
     }
 

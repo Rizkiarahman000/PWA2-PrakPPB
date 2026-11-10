@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ArrowLeft, Star, Send, Loader } from 'lucide-react'
 import FavoriteButton from '../common/FavoriteButton'
+import ShareButton from '../common/ShareButton'
 import { useReviews, useCreateReview } from '../../hooks/useReviews'
 import { getUserIdentifier } from '../../services/userService'
 import { formatPrice, averageRating } from '../../utils/helpers'
@@ -84,6 +85,7 @@ export default function GunDetail({ gun, onBack, onEdit, onDelete }) {
 
           <div className="detail-actions">
             <FavoriteButton gunId={gun.id || gun.name} />
+            <ShareButton gun={gun} className="btn btn--outline" label />
             {onEdit && (
               <button type="button" className="btn btn--outline" onClick={() => onEdit(gun)}>
                 Edit

@@ -79,4 +79,28 @@ apiClient.interceptors.response.use(
   },
 )
 
-export { apiClient, BASE_URL, SUPABASE_KEY, IS_SUPABASE }
+// ---------------------------------------------------------------------------
+// Raw client — keeps the full Axios response (headers included) so callers
+// can read pagination metadata such as the `Content-Range` header returned by
+// PostgREST. It shares the same auth interceptor but does NOT unwrap to
+// `response.data`.
+// ---------------------------------------------------------------------------
+const apiClientRaw = axios.create({
+  baseURL: BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000,
+})
+
+apiClientRaw.interceptors.request.use((config) => {
+  if (IS_SUPABASE && SUPABASE_KEY) {
+    config.headers['apikey'] = SUPABASE_KEY
+    if (!config.headers['Authorization']) {
+      config.headers['Authorization'] = `Bearer ${SUPABASE_KEY}`
+    }
+  }
+  return config
+})
+
+export { apiClient, apiClientRaw, BASE_URL, SUPABASE_KEY, IS_SUPABASE }

@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import gunService from '../services/gunService'
+import { cacheGet, cacheSet, buildKey } from '../utils/queryCache'
 
 // ---------------------------------------------------------------------------
 // useGuns — fetch the paginated / filtered product list from the API.
 //
+// Every response is cached (in-memory, TTL 30s) keyed by the params object.
+// When a fresh cache entry exists for the same params the hook serves it
+// without a network round-trip; `refetch` forces a revalidation.
+//
 // Returns { guns, loading, error, pagination, refetch }.
-// When the API is unreachable the `error` string will be set and `guns`
-// will remain an empty array so the UI can show a proper error state.
 // ---------------------------------------------------------------------------
 
 export function useGuns(params = {}) {
@@ -15,19 +18,32 @@ export function useGuns(params = {}) {
   const [error, setError] = useState(null)
   const [pagination, setPagination] = useState(null)
 
-  // Serialise params so the effect re-runs when they change.
-  const paramKey = JSON.stringify(params)
+  // Serialise params so the effect re-runs only when they actually change.
+  const cacheKey = buildKey('guns', params)
 
-  const fetchGuns = useCallback(async () => {
-    try {
-      setLoading(true)
+  const fetchGuns = useCallback(async ({ force = false } = {}) => {
+    // 1) Serve from cache when a fresh, matching entry exists.
+    const cached = force ? undefined : cacheGet(cacheKey)
+    if (cached) {
+      setGuns(cached.data || [])
+      setPagination(cached.pagination || null)
       setError(null)
+      setLoading(false)
+      return cached
+    }
 
+    setLoading(true)
+    setError(null)
+
+    try {
       const response = await gunService.getGuns(params)
 
       if (response.success) {
-        setGuns(response.data || [])
-        setPagination(response.pagination || null)
+        const data = response.data || []
+        const paging = response.pagination || null
+        setGuns(data)
+        setPagination(paging)
+        cacheSet(cacheKey, { data, pagination: paging })
       } else {
         setError(response.message || 'Failed to fetch products.')
       }
@@ -38,17 +54,20 @@ export function useGuns(params = {}) {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paramKey])
+  }, [cacheKey])
 
   useEffect(() => {
     fetchGuns()
   }, [fetchGuns])
 
-  return { guns, loading, error, pagination, refetch: fetchGuns }
+  // Force-refresh (bypasses the cache) — used after mutations.
+  const refetch = useCallback(() => fetchGuns({ force: true }), [fetchGuns])
+
+  return { guns, loading, error, pagination, refetch }
 }
 
 // ---------------------------------------------------------------------------
-// useGunById — fetch a single product by its UUID.
+// useGunById — fetch a single product by its id.
 //
 // Returns { gun, loading, error, refetch }.
 // ---------------------------------------------------------------------------
